@@ -33,7 +33,8 @@ post '/leds' do
   # Initiate constants, if not already initiated
   WARMWHITEHUE ||= 16.66666666666666
   WARMWHITESATURATION ||= 27.45097875595093
-  
+  WARMWHITEHUE2 ||= 16
+
   # Convert the WW and CW levels to the device's specs
   ww = params['WWLevel'].to_i*2.55  if params['WWLevel'] != nil
   cw = params['CWLevel'].to_i*2.55 if params['CWLevel'] != nil
@@ -47,6 +48,9 @@ post '/leds' do
     h = params['hue'].to_f*3.6
     s = params['saturation'].to_f
     l = params['level'].to_f
+    l > 254 ? (l = 254) : ()
+    l < 0 ? (l = 0) : ()
+
     r,g,b = hsvToRgb(h,s,l)
     params['red'] = r
     params['green'] = g
@@ -124,18 +128,24 @@ post '/leds' do
 
   # Update all devices using RGB values
   if useRGB
-    if params['hue'].to_f == WARMWHITEHUE
+    if params['hue'].to_f == WARMWHITEHUE || params['hue'].to_f == WARMWHITEHUE2
       l = params['level'].to_i*2.55
-      puts "Updating bulbs' white value"
+      l > 254 ? (l = 254) : ()
+      l < 0 ? (l = 0) : ()
+      
+      use_bulbs ? (puts "Updating bulbs' white value") : ()
       use_bulbs ? (instance_variable_get("@a#{bulb_names}").update_bulb_white(l)) : ()
+      use_legacy_bulbs ? (puts "Updating legacy bulbs' white value") : ()
       use_legacy_bulbs ? (instance_variable_get("@a#{legacy_bulb_names}").update_legacy_bulb_white(l)) : ()
     else
-      puts "Updating bulbs' colors"
+      use_bulbs ? (puts "Updating bulbs' color") : ()
       use_bulbs ? (instance_variable_get("@a#{bulb_names}").update_bulb_color(r,g,b)) : ()
+      use_legacy_bulbs ? (puts "Updating legacy bulbs' colors") : ()
       use_legacy_bulbs ? (instance_variable_get("@a#{legacy_bulb_names}").update_legacy_bulb_color(r,g,b)) : ()
     end
-    puts "Updating RGB devices' colors"
+    use_rgb_ww ? (puts "Updating RGB WW devices' colors") : ()
     use_rgb_ww ? (instance_variable_get("@a#{rgb_ww_names}").update_ww(r,g,b,ww)) : ()
+    use_rgb_ww_cw ? (puts "Updating RGB WW CW devices' colors") : ()
     use_rgb_ww_cw ? (instance_variable_get("@a#{rgb_ww_cw_names}").update_ww_cw(r,g,b,ww,cw)) : ()
   end
 
@@ -270,6 +280,7 @@ end
 
 #   return r.to_i, g.to_i, b.to_i
 # end
+
 def to_hex(number)
   number.to_s(16).upcase.rjust(2, '0')
 end
@@ -314,13 +325,21 @@ module LEDENET
 
     def update_ww(r, g, b, ww) # Update a WW wireless device
       msg = [0x31, r, g, b, ww, 0x00, 0x0f]
+
       send_bytes_action(*msg, calc_checksum(msg))
       true
     end
 
     def update_ww_cw(r, g, b, ww, cw)
-      msg = [0x31, r, g, b, ww, cw, 0x0f, 0x0f]
+      # Update Color
+      msg = [0x31, r, g, b, 0x00, 0x00, 0xf0, 0x0f]
       send_bytes_action(*msg, calc_checksum(msg))
+
+      # Update WW/CW
+      msg = [0x31, 0x00, 0x00, 0x00, ww, cw, 0x0f, 0x0f]
+      send_bytes_action(*msg, calc_checksum(msg))
+
+      
       true
     end
 
@@ -336,17 +355,6 @@ module LEDENET
       send_bytes_action(*msg, calc_checksum(msg))
       true
     end
-
-    # def every_so_many_seconds(seconds)
-    #   last_tick = Time.now
-    #   loop do
-    #     sleep 0.1
-    #     if Time.now - last_tick >= seconds
-    #       $dynamic_variables[].each { |device| device.  }
-    #       yield
-    #     end
-    #   end
-    # end
 
     def update_legacy_bulb_color(r,g,b)
       msg = [0x56, r, g, b, 0x00, 0xf0, 0xaa]
@@ -495,14 +503,14 @@ module LEDENET
         puts "Checking devices' connections"
         
           $dynamic_variables.each do |key, api|
-            # puts "Checking Device ... #{key}"
+            puts "Checking Device ... #{key}"
 
             elapsed_seconds = ((Time.now - $reset_table[key])).to_i  
             if elapsed_seconds >= 250
-              # puts "Resetting the timer... The key is #{key} and the api is #{api}"
-              # puts "We're connected to #{api.peeraddr}"
+              puts "Resetting the timer... The key is #{key} and the api is #{api}"
+              puts "We're connected to #{api.peeraddr}"
               $dynamic_variables[key] = TCPSocket.new(api.peeraddr[2], api.peeraddr[1])
-              # puts "We're connected to #{api.peeraddr}"
+              puts "We're connected to #{api.peeraddr}"
               $reset_table[key] = Time.now
               puts "Reset #{key} after #{elapsed_seconds}."
             end
