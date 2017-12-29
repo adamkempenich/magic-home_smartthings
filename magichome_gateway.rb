@@ -23,6 +23,7 @@ before do
 end
 
 
+
 post '/leds' do
 
   # Convert the parameters into something usable
@@ -33,7 +34,6 @@ post '/leds' do
   # Initiate constants, if not already initiated
   WARMWHITEHUE ||= 16.66666666666666
   WARMWHITESATURATION ||= 27.45097875595093
-  WARMWHITEHUE2 ||= 16
 
   # Convert the WW and CW levels to the device's specs
   ww = params['WWLevel'].to_i*2.55  if params['WWLevel'] != nil
@@ -48,8 +48,9 @@ post '/leds' do
     h = params['hue'].to_f*3.6
     s = params['saturation'].to_f
     l = params['level'].to_f
-    l > 254 ? (l = 254) : ()
-    l < 0 ? (l = 0) : ()
+    # l > 254 ? (l = 254) : ()
+    # l < 0 ? (l = 0) : ()
+    l = normalizeVariable(l, 0, 254, 0, 255)
 
     r,g,b = hsvToRgb(h,s,l)
     params['red'] = r
@@ -119,7 +120,7 @@ post '/leds' do
     presets = { "1"=> 0x25, "2" => 0x26, "3" => 0x27, "4" => 0x28, "5" => 0x29, "6" => 0x30, "7" => 0x31, "8" => 0x32, "9" => 0x33, "10" => 0x34, "11" => 0x35, "12" => 0x36, "13" => 0x37, "14" => 0x38, "15" => 0x39, "16" => 0x40, "17" => 0x41, "18" => 0x42, "19" => 0x43, "20" => 0x44, "21" => 0x45 }
     speed = (100 - params['presetSpeed'].to_i)*2.55
 
-    puts "Sending preset to devices..."
+    puts "Sending preset " + presets[params['preset']].to_s + " with speed " + speed.to_s + " to devices..."
     use_bulbs ? (instance_variable_get("@a#{bulb_names}").send_default_function( presets[params['preset']], speed)) : ()
     use_rgb_ww ? (instance_variable_get("@a#{rgb_ww_names}").send_default_function( presets[params['preset']], speed)) : ()
     use_rgb_ww_cw ? (instance_variable_get("@a#{rgb_ww_cw_names}").send_default_function( presets[params['preset']], speed)) : ()
@@ -128,161 +129,181 @@ post '/leds' do
 
   # Update all devices using RGB values
   if useRGB
-    if params['hue'].to_f == WARMWHITEHUE || params['hue'].to_f == WARMWHITEHUE2
+    if params['hue'].to_f == WARMWHITEHUE || params['hue'].to_f == 4.4444447
       l = params['level'].to_i*2.55
-      l > 254 ? (l = 254) : ()
-      l < 0 ? (l = 0) : ()
-      
+      l = normalizeVariable(l, 0, 254, 0, 255)
+
       use_bulbs ? (puts "Updating bulbs' white value") : ()
       use_bulbs ? (instance_variable_get("@a#{bulb_names}").update_bulb_white(l)) : ()
       use_legacy_bulbs ? (puts "Updating legacy bulbs' white value") : ()
       use_legacy_bulbs ? (instance_variable_get("@a#{legacy_bulb_names}").update_legacy_bulb_white(l)) : ()
     else
+      r = normalizeVariable(r, 0, 254, 0, 255)
+      g = normalizeVariable(g, 0, 254, 0, 255)
+      b = normalizeVariable(b, 0, 254, 0, 255)
+
       use_bulbs ? (puts "Updating bulbs' color") : ()
       use_bulbs ? (instance_variable_get("@a#{bulb_names}").update_bulb_color(r,g,b)) : ()
       use_legacy_bulbs ? (puts "Updating legacy bulbs' colors") : ()
       use_legacy_bulbs ? (instance_variable_get("@a#{legacy_bulb_names}").update_legacy_bulb_color(r,g,b)) : ()
     end
-    use_rgb_ww ? (puts "Updating RGB WW devices' colors") : ()
-    use_rgb_ww ? (instance_variable_get("@a#{rgb_ww_names}").update_ww(r,g,b,ww)) : ()
-    use_rgb_ww_cw ? (puts "Updating RGB WW CW devices' colors") : ()
-    use_rgb_ww_cw ? (instance_variable_get("@a#{rgb_ww_cw_names}").update_ww_cw(r,g,b,ww,cw)) : ()
+      r = normalizeVariable(r, 0, 254, 0, 255)
+      g = normalizeVariable(g, 0, 254, 0, 255)
+      b = normalizeVariable(b, 0, 254, 0, 255)
+      ww = normalizeVariable(ww, 0, 254, 0, 255)
+      cw = normalizeVariable(cw, 0, 254, 0, 255)
+      
+      use_rgb_ww ? (puts "Updating RGB WW devices' colors") : ()
+      use_rgb_ww ? (instance_variable_get("@a#{rgb_ww_names}").update_ww(r,g,b,ww)) : ()
+      use_rgb_ww_cw ? (puts "Updating RGB WW CW devices' colors") : ()
+      use_rgb_ww_cw ? (instance_variable_get("@a#{rgb_ww_cw_names}").update_ww_cw(r,g,b,ww,cw)) : ()
   end
 
-  # if params.include?('refresh')
-  #   if bulb_api != nil
-  #   r,g,b,w,powerState = bulb_api.current_status
-  #   h,s,l = rgbToHsv(r,g,b)
-  #   r,g,b = hsvToRgb(WARMWHITEHUE, WARMWHITESATURATION, (w/2.55)) if [r,g,b] == [0,0,0] && w > 0
-  #   headers \
-  #       "powerState" => powerState,
-  #       "level" => l.to_s,
-  #       "hex" =>  "#" + to_hex(r) + to_hex(g) + to_hex(b),
-  #   end
+  if params.include?('refresh')
+    if use_rgb_ww_cw == true
+      r,g,b,w,cw,powerState = instance_variable_get("@a#{rgb_ww_cw_names}").current_status
+      h,s,l = rgbToHsv(r,g,b)
+        headers \
+          "powerState" => powerState,
+          "level" => l.to_s,
+          "hex" =>  "#" + to_hex(r) + to_hex(g) + to_hex(b),
+          "CWLevel" => (w/2.55).to_s
 
-  #   if rgb_api != nil
-  #   r,g,b,w,powerState = rgb_api.current_status
-  #   h,s,l = rgbToHsv(r,g,b)
-  #     headers \
-  #       "powerState" => powerState,
-  #       "level" => l.to_s,
-  #       "hex" =>  "#" + to_hex(r) + to_hex(g) + to_hex(b),
-  #   end
-  #   if rgb_ww_api != nil
-  #   r,g,b,w,powerState = rgb_ww_api.current_status
-  #   h,s,l = rgbToHsv(r,g,b)
-  #     headers \
-  #       "powerState" => powerState,
-  #       "level" => l.to_s,
-  #       "hex" =>  "#" + to_hex(r) + to_hex(g) + to_hex(b),
-  #       "WWLevel" => (w/2.55).to_s
-  #   end
-
-  #   if rgb_ww_cw_api != nil
-  #   r,g,b,w,cw,powerState = rgb_ww_cw_api.current_status
-  #   h,s,l = rgbToHsv(r,g,b)
-  #     headers \
-  #       "powerState" => powerState,
-  #       "level" => l.to_s,
-  #       "hex" =>  "#" + to_hex(r) + to_hex(g) + to_hex(b),
-  #       "CWLevel" => (w/2.55).to_s
-  #   end
-  # end
+    elsif use_rgb_ww == true
+      r,g,b,w,powerState = instance_variable_get("@a#{rgb_ww_names}").current_status
+      h,s,l = rgbToHsv(r,g,b)
+        headers \
+          "powerState" => powerState,
+          "level" => l.to_s,
+          "hex" =>  "#" + to_hex(r) + to_hex(g) + to_hex(b),
+          "WWLevel" => (w/2.55).to_s
+          
+    elsif use_bulbs == true
+      r,g,b,w,powerState = instance_variable_get("@a#{bulb_names}").current_status
+      h,s,l = rgbToHsv(r,g,b)
+      if [r,g,b] == [0,0,0] && w > 0
+          r,g,b = hsvToRgb(WARMWHITEHUE, WARMWHITESATURATION, (w/2.55)) 
+      end
+      headers \
+          "powerState" => powerState,
+          "level" => l.to_s,
+          "hex" =>  "#" + to_hex(r) + to_hex(g) + to_hex(b)
+    end
+  end
   status 200
   body '{"success": true}'
 end
 
-# def rgbToHsv(r, g, b)
-#   # Takes an RGB value (0-255) and returns HSV in 0-360, 0-100, 0-100
-#   r /= 255.0
-#   g /= 255.0
-#   b /= 255.0
 
-#   max = [r, g, b].max.to_f
-#   min = [r, g, b].min.to_f
-#   delta = (max - min).to_f
-#   v = (max * 100.0).to_f
 
-#   max != 0.0 ? s = delta / max * 100.0 : s=0
+def rgbToHsv(r, g, b)
+  # Takes an RGB value (0-255) and returns HSV in 0-360, 0-100, 0-100
+  r /= 255.0
+  g /= 255.0
+  b /= 255.0
+
+  max = [r, g, b].max.to_f
+  min = [r, g, b].min.to_f
+  delta = (max - min).to_f
+  v = (max * 100.0).to_f
+
+  max != 0.0 ? s = delta / max * 100.0 : s=0
   
-#   if (s == 0.0) 
-#     h = 0.0
-#   else
-#       if (r == max)
-#         h = ((g - b) / delta).to_f
-#       elsif (g == max)
-#         h = (2 + (b - r) / delta).to_f
-#       elsif (b == max)
-#         h = (4 + (r - g) / delta).to_f
-#     end
-#     h *= 60.0
-#     h += 360 if (h < 0)
-#   end
-#   return h,s,v
-# end
-# def hsvToRgb(h,s,v)
-#   h /= 360.0
-#   s /= 100.0
-#   v /= 100.0
+  if (s == 0.0) 
+    h = 0.0
+  else
+      if (r == max)
+        h = ((g - b) / delta).to_f
+      elsif (g == max)
+        h = (2 + (b - r) / delta).to_f
+      elsif (b == max)
+        h = (4 + (r - g) / delta).to_f
+    end
+    h *= 60.0
+    h += 360 if (h < 0)
+  end
+  return h,s,v
+end
+def hsvToRgb(h,s,v)
+  h /= 360.0
+  s /= 100.0
+  v /= 100.0
 
-#   if s == 0.0
-#      r = v * 255
-#      g = v * 255
-#      b = v * 255
-#   else
-#     h = (h * 6).to_f
-#     h = 0 if h == 6
-#     i = h.floor
-#     var_1 = (v * ( 1.0 - s )).to_f
-#     var_2 = (v * ( 1.0 - s * ( h - i ) )).to_f
-#     var_3 = (v * ( 1.0 - s * ( 1.0 - ( h - i )))).to_f
-#   end
+  if s == 0.0
+     r = v * 255
+     g = v * 255
+     b = v * 255
+  else
+    h = (h * 6).to_f
+    h = 0 if h == 6
+    i = h.floor
+    var_1 = (v * ( 1.0 - s )).to_f
+    var_2 = (v * ( 1.0 - s * ( h - i ) )).to_f
+    var_3 = (v * ( 1.0 - s * ( 1.0 - ( h - i )))).to_f
+  end
 
-#   if i == 0 
-#     r = v
-#     g = var_3
-#     b = var_1
-#   elsif i == 1
-#     r = var_2
-#     g = v
-#     b = var_1
-#   elsif i == 2
-#     r = var_1
-#     g = v
-#     b = var_3
-#   elsif i == 3
-#     r = var_1
-#     g = var_2
-#     b = v
-#   elsif i == 4
-#     r = var_3
-#     g = var_1
-#     b = v
-#   else
-#     r = v
-#     g = var_1
-#     b = var_2
-#   end
+  if i == 0 
+    r = v
+    g = var_3
+    b = var_1
+  elsif i == 1
+    r = var_2
+    g = v
+    b = var_1
+  elsif i == 2
+    r = var_1
+    g = v
+    b = var_3
+  elsif i == 3
+    r = var_1
+    g = var_2
+    b = v
+  elsif i == 4
+    r = var_3
+    g = var_1
+    b = v
+  else
+    r = v
+    g = var_1
+    b = var_2
+  end
 
-#     if r==nil
-#       r=0
-#     end
-#     if g==nil
-#       g=0
-#     end
-#     if b==nil
-#       b=0
-#     end
+    if r==nil
+      r=0
+    end
+    if g==nil
+      g=0
+    end
+    if b==nil
+      b=0
+    end
 
-#     r *= 255
-#     g *= 255
-#     b *= 255
+    r *= 255
+    g *= 255
+    b *= 255
 
-#   return r.to_i, g.to_i, b.to_i
-# end
+  return r.to_i, g.to_i, b.to_i
+end
 
 def to_hex(number)
   number.to_s(16).upcase.rjust(2, '0')
+end
+
+def normalizeVariable(value,lowValue=0,highValue=255,setLowValue=0,setHighValue=255)
+  if value < lowValue
+    if setLowValue != 0
+      return setLowValue
+    else
+      return lowValue
+    end
+  elsif value > highValue
+    if setHighValue != 255
+      return setHighValue
+    else
+      return highValue
+    end
+  end
+  return value
 end
 
 module LEDENET
@@ -302,6 +323,8 @@ module LEDENET
       @device_address = device_address
       @options = DEFAULT_OPTIONS.merge(options)
     end
+
+    
 
     def on
       send_bytes_action(0x71, 0x23, 0x0F, 0xA3)
@@ -409,7 +432,7 @@ module LEDENET
 
     def current_status # Returns R, G, B, W, Power State, and Device Type
       current_packet = status
-      return unpack_to_int(current_packet[6]), unpack_to_int(current_packet[7]), unpack_to_int(current_packet[8]), unpack_to_int(current_packet[9]), on?, device_type?
+      return unpack_to_int(current_packet[6]), unpack_to_int(current_packet[7]), unpack_to_int(current_packet[8]), unpack_to_int(current_packet[9])
     end
     
     def reconnect!
@@ -434,7 +457,7 @@ module LEDENET
         socket_action do
           msg = [0x81, 0x8A, 0x8B, calc_checksum([0x81, 0x8A, 0x8B])]
           send_bytes(*msg)
-          flush_response(14)
+          return flush_response(14)
         end
       end
 
