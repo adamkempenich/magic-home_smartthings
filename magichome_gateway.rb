@@ -117,6 +117,9 @@ post '/leds' do
 
   # Send a preset function to a device
   if sendPreset
+    # 1 Seven Color Dissolve, 2 Red Fade, 3 Green Fade, 4 Blue Fade, 5 Yellow Fade, 6 Cyan Fade, 7 Purple Fade, 8 White Fade, 9 Red Green Dissolve
+    # 10 Red Blue Dissolve, 11 Green Blue Dissolve, 12 Seven Color Strobe, 13 Red Strobe, 14 Green Strobe, 15 Blue Strobe, 16 Yellow Strobe
+    # 17 Cyan Strobe, 18 Purple Strobe, 19 White Strobe, 20 Seven Color Jump, 21 ???
     presets = { "1"=> 0x25, "2" => 0x26, "3" => 0x27, "4" => 0x28, "5" => 0x29, "6" => 0x30, "7" => 0x31, "8" => 0x32, "9" => 0x33, "10" => 0x34, "11" => 0x35, "12" => 0x36, "13" => 0x37, "14" => 0x38, "15" => 0x39, "16" => 0x40, "17" => 0x41, "18" => 0x42, "19" => 0x43, "20" => 0x44, "21" => 0x45 }
     speed = (100 - params['presetSpeed'].to_i)*2.55
 
@@ -324,8 +327,6 @@ module LEDENET
       @options = DEFAULT_OPTIONS.merge(options)
     end
 
-    
-
     def on
       send_bytes_action(0x71, 0x23, 0x0F, 0xA3)
       true
@@ -361,7 +362,6 @@ module LEDENET
       # Update WW/CW
       msg = [0x31, 0x00, 0x00, 0x00, ww, cw, 0x0f, 0x0f]
       send_bytes_action(*msg, calc_checksum(msg))
-
       
       true
     end
